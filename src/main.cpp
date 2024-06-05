@@ -2,17 +2,6 @@
 #include "channel.h"
 #include "module.h"
 
-ChannelMaximum<float> chmax(-15);
-ChannelMinimum<float> chmin(100);
-
-ChannelMinimum<float> ch1(1), ch2(1);
-
-void module_gain()
-{
-    {
-        ch1.drive(2*ch2.get());
-    }
-}
 
 ChannelAverage<int> vehicle_velocity_command,
                     vehicle_steering_command,
@@ -21,31 +10,7 @@ ChannelAverage<int> vehicle_velocity_command,
                     left_motor_velocity_command,
                     right_motor_velocity_command;
 
-void differential()
-{
-    { // motor_direction_bits
-        const float vel = vehicle_velocity_command.get();
-        motor_direction_bits.drive(
-            (-127 < vel && vel < -1) ? 0b00010110 :
-            (1 < vel && vel < 127) ? 0b00011001 :
-            0
-        );
-    }
-    {
-        steering_motor_position_command.drive(vehicle_steering_command.get() - 10);
-    }
-    {
-        const float velocity = vehicle_velocity_command.get() * 16;
-        const float offset = vehicle_velocity_command.get() * vehicle_steering_command.get() * 2;
-        {
-            left_motor_velocity_command.drive(fabs(velocity + offset));
-            right_motor_velocity_command.drive(fabs(velocity - offset));
-        }
-    }
-}
-
-MODULE differentialM()
-{
+MODULE(differential,
     BLOCK(
         LET(velocity = vehicle_velocity_command.get())
         DRIVE(motor_direction_bits, 
@@ -60,40 +25,41 @@ MODULE differentialM()
         DRIVE(left_motor_velocity_command, velocity + offset)
         DRIVE(right_motor_velocity_command, velocity - offset)
     )
-}
+)
 
 ChannelAverage<float> input_channel;
-ChannelAverage<unsigned short> output_channel;
+ChannelAverage<int> count_channel;
+ChannelAverage<float> output_channel;
 
-MODULE count_transitions()
-{
-    SLET(count = 0)
-    SLET(last_sign = 1)
-    DRIVE(output_channel, count)
-    LET(this_sign = input_channel.get() < 0 ? -1 : 1)
-    if(last_sign != this_sign)
-    BLOCK(
-        count++;
-        last_sign = this_sign;
-    )
-}
+MODULE(count_transitions,
+  SLET(count = 0)
+  SLET(last_sign = 1)
+  LET(this_sign = input_channel.get() < 0 ? -1 : 1)
+  if(last_sign != this_sign)
+  {
+    count++;
+    last_sign = this_sign;
+  }
+  DRIVE(count_channel, count)
+)
 
+
+MODULE(gain2,
+  DRIVE(output_channel, 2 * input_channel.get())
+)
+
+Updatable *signals[] = {
+  &input_channel,
+  &gain2,
+  &count_transitions,
+  &count_channel,
+  &output_channel
+};
 
 void setup()
 {
   Serial.begin(9600);
 }
-
-MODULE_POINTER modules[] = {
-  count_transitions,
-  differential,
-  differentialM
-};
-
-ChannelNoT *signals[] = {
-  &input_channel,
-  &output_channel
-};
 
 void loop()
 {
@@ -112,20 +78,15 @@ void loop()
   // delay(2500);
 
   DRIVE(input_channel, sin(millis() * 0.1))
-  input_channel.update();
 
-  for(auto m : modules)
+  for(auto s : signals)
   {
-    (*m)();
+    s->update();
   }
-  // for(auto s : signals)
-  // {
-  //   s->update();
-  // }
-
-  output_channel.update();
 
   Serial.print(input_channel.get());
+  Serial.print(" ");
+  Serial.print(count_channel.get());
   Serial.print(" ");
   Serial.println(output_channel.get());
   delay(200);

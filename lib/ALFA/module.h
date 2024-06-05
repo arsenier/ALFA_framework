@@ -2,9 +2,33 @@
 
 #include "channel.h"
 #include "math.h"
+#include "updatable.h"
 
-#define MODULE void
-typedef MODULE(*MODULE_POINTER)();
+class Module : public Updatable
+{
+public:
+
+    Module(void (*upd)())
+    {
+        this->upd = upd;
+    }
+
+    void update() override
+    {
+        (*upd)();
+    }
+
+private:
+    void (*upd)();
+};
+
+#define MODULE(name, methods) \
+Module name( \
+    []() -> void { \
+        methods \
+    } \
+);
+
 #define DRIVE(channel_name, expression) \
     { \
         channel_name.drive(expression); \
