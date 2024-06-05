@@ -1,19 +1,17 @@
 #pragma once
 
-class ChannelNoT
-{
-public:
-    virtual void update() = 0;
-};
+#include "updatable.h"
 
 template <typename T>
-class Channel : public ChannelNoT
+class Channel : public Updatable
 {
 protected:
     T out;
+    T *actuator;
 
 public:
     virtual void drive(T in) = 0;
+    void update() {}
     T get() { return out; }
 };
 
@@ -83,7 +81,7 @@ public:
     }
     void update() override
     {
-        this->out = inState / inCount;
+        this->out = inCount ? inState / inCount : 0;
         inState = 0;
         inCount = 0;
     }
@@ -92,3 +90,33 @@ private:
     T inState;
     size_t inCount;
 };
+
+template <typename T>
+class ChannelSensor : public Channel<T>
+{
+public:
+    ChannelSensor(T *source)
+    {
+        this->source = source;
+    }
+
+    void drive(T in) override {}
+
+    void update() override
+    {
+        cli();
+        this->out = *source;
+        sei();
+    }
+
+private:
+    T *source;
+};
+
+/*
+
+CHANNEL(name,
+    chtype, datatype, 
+)
+
+*/
